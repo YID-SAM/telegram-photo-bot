@@ -1,6 +1,5 @@
 import os
 import logging
-import traceback
 from uuid import uuid4
 
 from telegram import Update
@@ -26,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # -----------------------------
-# Create folders
+# Create folders if they don't exist
 # -----------------------------
 os.makedirs(Config.DOWNLOAD_FOLDER, exist_ok=True)
 os.makedirs(Config.OUTPUT_FOLDER, exist_ok=True)
@@ -36,22 +35,39 @@ os.makedirs(Config.OUTPUT_FOLDER, exist_ok=True)
 # /start
 # -----------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    text = (
+        "👋 Welcome!\n\n"
+        "📸 Send me a photo or image.\n\n"
+    )
+
+    await update.message.reply_text(text)
+
+
+# -----------------------------
+# Invalid messages
+# -----------------------------
+async def invalid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
     await update.message.reply_text(
-        "👋 Welcome!\n\nSend me a photo."
+        "📸 Please send a photo."
     )
 
 
 # -----------------------------
-# Photo handler
+# Photo Handler
 # -----------------------------
 async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     input_path = None
     output_path = None
 
-    try:
+    # Show processing message
+    processing = await update.message.reply_text(
+        "⏳ Processing your photo..."
+    )
 
-        logger.info("Received photo")
+    try:
 
         unique_id = uuid4().hex
 
@@ -65,52 +81,54 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{unique_id}.jpg"
         )
 
-        logger.info(f"Input file: {input_path}")
-        logger.info(f"Output file: {output_path}")
+        logger.info(f"Input: {input_path}")
+        logger.info(f"Output: {output_path}")
 
-        # Download image
+        # Download photo
         photo_file = await update.message.photo[-1].get_file()
-
-        logger.info("Downloading image...")
-
         await photo_file.download_to_drive(input_path)
 
-        logger.info("Image downloaded successfully.")
+        logger.info("Photo downloaded.")
 
         # Edit image
-        logger.info("Calling edit_image()...")
-
         edit_image(input_path, output_path)
 
-        logger.info("Image edited successfully.")
+        logger.info("Image edited.")
 
-        # Send image
+        # Send edited image
         with open(output_path, "rb") as image:
-            await update.message.reply_photo(photo=image)
 
-        logger.info("Edited image sent.")
+            await update.message.reply_photo(
+                photo=image,
+                caption="✅ Your profile picture is ready!"
+            )
 
-    except Exception as e:
+        # Remove processing message
+        await processing.delete()
 
-        logger.error(traceback.format_exc())
+        logger.info("Image sent.")
 
-        # TEMPORARY
-        # Send the real error back to Telegram
+    except Exception:
+
+        logger.exception("Error processing image")
+
+        # Remove processing message if it still exists
+        try:
+            await processing.delete()
+        except:
+            pass
+
         await update.message.reply_text(
-            f"ERROR:\n{str(e)}"
+            "❌ Sorry, I couldn't process that image.\nPlease try another photo."
         )
 
     finally:
 
-        try:
-            if input_path and os.path.exists(input_path):
-                os.remove(input_path)
+        if input_path and os.path.exists(input_path):
+            os.remove(input_path)
 
-            if output_path and os.path.exists(output_path):
-                os.remove(output_path)
-
-        except Exception:
-            logger.exception("Cleanup failed")
+        if output_path and os.path.exists(output_path):
+            os.remove(output_path)
 
 
 # -----------------------------
@@ -118,15 +136,31 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # -----------------------------
 def main():
 
-    if not Config.BOT_TOKEN:
+    if not Config.TOKEN:
         raise ValueError(
-            "BOT_TOKEN environment variable is missing."
+            "BOT_TOKEN is missing. Check your Railway Environment Variables."
         )
 
-    app = ApplicationBuilder().token(Config.BOT_TOKEN).build()
+    app = ApplicationBuilder().token(Config.TOKEN).build()
 
+    # Commands
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.PHOTO, photo))
+
+    # Photo messages
+    app.add_handler(
+        MessageHandler(
+            filters.PHOTO,
+            photo
+        )
+    )
+
+    # Everything except photos and commands
+    app.add_handler(
+        MessageHandler(
+            ~filters.PHOTO & ~filters.COMMAND,
+            invalid
+        )
+    )
 
     logger.info("Bot started successfully.")
 
