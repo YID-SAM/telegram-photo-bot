@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
 
@@ -11,6 +12,7 @@ class Config:
     # Project folders
     DOWNLOAD_FOLDER = "downloads"
     OUTPUT_FOLDER = "output"
+    OVERLAY_PATH = "assets/overlay.png"
     LOG_FOLDER = "logs"
 
     # Font
