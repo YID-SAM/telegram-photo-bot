@@ -14,9 +14,9 @@ from telegram.ext import (
 from config import Config
 from editor import edit_image
 
-# -----------------------------
+# --------------------------------------------------
 # Logging
-# -----------------------------
+# --------------------------------------------------
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
@@ -24,29 +24,34 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-# -----------------------------
-# Create folders if they don't exist
-# -----------------------------
+# --------------------------------------------------
+# Create required folders
+# --------------------------------------------------
 os.makedirs(Config.DOWNLOAD_FOLDER, exist_ok=True)
 os.makedirs(Config.OUTPUT_FOLDER, exist_ok=True)
+os.makedirs(Config.LOG_FOLDER, exist_ok=True)
 
 
-# -----------------------------
-# /start
-# -----------------------------
+# --------------------------------------------------
+# /start command
+# --------------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = (
         "👋 Welcome!\n\n"
-        "📸 Send me a photo or image.\n\n"
+        "📸 Send me a photo.\n\n"
+        "✨ I'll automatically:\n"
+        "• Crop it into a square\n"
+        "• Apply the official challenge frame\n"
+        "• Return a profile-picture-ready image."
     )
 
     await update.message.reply_text(text)
 
 
-# -----------------------------
-# Invalid messages
-# -----------------------------
+# --------------------------------------------------
+# Invalid message handler
+# --------------------------------------------------
 async def invalid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
@@ -54,15 +59,14 @@ async def invalid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-# -----------------------------
-# Photo Handler
-# -----------------------------
+# --------------------------------------------------
+# Photo handler
+# --------------------------------------------------
 async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     input_path = None
     output_path = None
 
-    # Show processing message
     processing = await update.message.reply_text(
         "⏳ Processing your photo..."
     )
@@ -81,19 +85,19 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{unique_id}.jpg"
         )
 
-        logger.info(f"Input: {input_path}")
-        logger.info(f"Output: {output_path}")
+        logger.info(f"Input file: {input_path}")
+        logger.info(f"Output file: {output_path}")
 
-        # Download photo
+        # Download user's photo
         photo_file = await update.message.photo[-1].get_file()
         await photo_file.download_to_drive(input_path)
 
-        logger.info("Photo downloaded.")
+        logger.info("Photo downloaded successfully.")
 
         # Edit image
         edit_image(input_path, output_path)
 
-        logger.info("Image edited.")
+        logger.info("Image edited successfully.")
 
         # Send edited image
         with open(output_path, "rb") as image:
@@ -106,20 +110,19 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Remove processing message
         await processing.delete()
 
-        logger.info("Image sent.")
+        logger.info("Edited image sent.")
 
-    except Exception:
+    except Exception as e:
 
         logger.exception("Error processing image")
 
-        # Remove processing message if it still exists
         try:
             await processing.delete()
-        except:
+        except Exception:
             pass
 
         await update.message.reply_text(
-            "❌ Sorry, I couldn't process that image.\nPlease try another photo."
+            "❌ Sorry, I couldn't process your image.\nPlease try another photo."
         )
 
     finally:
@@ -131,20 +134,24 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(output_path)
 
 
-# -----------------------------
+# --------------------------------------------------
 # Main
-# -----------------------------
+# --------------------------------------------------
 def main():
 
-    if not Config.TOKEN:
+    if not Config.BOT_TOKEN:
         raise ValueError(
-            "BOT_TOKEN is missing. Check your Railway Environment Variables."
+            "BOT_TOKEN is missing. Check Railway Variables."
         )
 
-    app = ApplicationBuilder().token(Config.TOKEN).build()
+    app = ApplicationBuilder().token(
+        Config.BOT_TOKEN
+    ).build()
 
     # Commands
-    app.add_handler(CommandHandler("start", start))
+    app.add_handler(
+        CommandHandler("start", start)
+    )
 
     # Photo messages
     app.add_handler(
@@ -154,7 +161,7 @@ def main():
         )
     )
 
-    # Everything except photos and commands
+    # Invalid messages
     app.add_handler(
         MessageHandler(
             ~filters.PHOTO & ~filters.COMMAND,
