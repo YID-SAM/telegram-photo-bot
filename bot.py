@@ -1,5 +1,6 @@
 import os
 import logging
+import traceback
 from uuid import uuid4
 
 from telegram import Update
@@ -25,19 +26,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # -----------------------------
-# Create required folders
+# Create folders
 # -----------------------------
 os.makedirs(Config.DOWNLOAD_FOLDER, exist_ok=True)
 os.makedirs(Config.OUTPUT_FOLDER, exist_ok=True)
-os.makedirs("logs", exist_ok=True)
+
 
 # -----------------------------
-# Start command
+# /start
 # -----------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "👋 Welcome!\n\nSend me a photo and I'll edit it."
+        "👋 Welcome!\n\nSend me a photo."
     )
+
 
 # -----------------------------
 # Photo handler
@@ -48,6 +50,9 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     output_path = None
 
     try:
+
+        logger.info("Received photo")
+
         unique_id = uuid4().hex
 
         input_path = os.path.join(
@@ -60,44 +65,63 @@ async def photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{unique_id}.jpg"
         )
 
-        logger.info(f"Input: {input_path}")
-        logger.info(f"Output: {output_path}")
+        logger.info(f"Input file: {input_path}")
+        logger.info(f"Output file: {output_path}")
 
-        # Download photo
+        # Download image
         photo_file = await update.message.photo[-1].get_file()
+
+        logger.info("Downloading image...")
+
         await photo_file.download_to_drive(input_path)
 
-        logger.info("Photo downloaded successfully.")
+        logger.info("Image downloaded successfully.")
 
         # Edit image
+        logger.info("Calling edit_image()...")
+
         edit_image(input_path, output_path)
 
         logger.info("Image edited successfully.")
 
         # Send image
-        with open(output_path, "rb") as img:
-            await update.message.reply_photo(photo=img)
+        with open(output_path, "rb") as image:
+            await update.message.reply_photo(photo=image)
 
         logger.info("Edited image sent.")
 
-    except Exception:
-        logger.exception("Error while processing image")
+    except Exception as e:
+
+        logger.error(traceback.format_exc())
+
+        # TEMPORARY
+        # Send the real error back to Telegram
         await update.message.reply_text(
-            "❌ Error processing image."
+            f"ERROR:\n{str(e)}"
         )
 
     finally:
 
-        if input_path and os.path.exists(input_path):
-            os.remove(input_path)
+        try:
+            if input_path and os.path.exists(input_path):
+                os.remove(input_path)
 
-        if output_path and os.path.exists(output_path):
-            os.remove(output_path)
+            if output_path and os.path.exists(output_path):
+                os.remove(output_path)
+
+        except Exception:
+            logger.exception("Cleanup failed")
+
 
 # -----------------------------
 # Main
 # -----------------------------
 def main():
+
+    if not Config.BOT_TOKEN:
+        raise ValueError(
+            "BOT_TOKEN environment variable is missing."
+        )
 
     app = ApplicationBuilder().token(Config.BOT_TOKEN).build()
 
