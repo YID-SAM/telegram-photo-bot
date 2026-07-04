@@ -23,35 +23,17 @@ def edit_image(input_path, output_path):
     # Crop to square
     photo = crop_square(photo)
 
-    # Resize to 1080x1080
+    # Resize to 1080 × 1080
     photo = photo.resize((1080, 1080), Image.LANCZOS)
 
-    # Load overlay
+    # Open overlay
     overlay = Image.open(Config.OVERLAY_PATH).convert("RGBA")
 
-    # Resize overlay
+    # Resize overlay to exactly match the photo
     overlay = overlay.resize((1080, 1080), Image.LANCZOS)
 
-    # Create transparent canvas
-    overlay_canvas = Image.new("RGBA", (1080, 1080), (0, 0, 0, 0))
-
-    # ==========================
-    # Move overlay DOWN
-    # Increase this value if needed
-    # ==========================
-    OVERLAY_OFFSET_Y = 40
-
-    overlay_canvas.paste(
-        overlay,
-        (0, OVERLAY_OFFSET_Y),
-        overlay
-    )
-
-    # Merge overlay with photo
-    final = Image.alpha_composite(
-        photo,
-        overlay_canvas
-    )
+    # Merge overlay directly on top of the photo
+    final = Image.alpha_composite(photo, overlay)
 
     # Save
     final.convert("RGB").save(
